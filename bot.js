@@ -19,9 +19,10 @@ const client = new Client({
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildPresences,
+    GatewayIntentBits.GuildMessageReactions,
   ],
-  // partials are needed so dms actually work
-  partials: [Partials.Channel, Partials.Message]
+  // partials are needed so dms, reactions on old messages, etc. work
+  partials: [Partials.Channel, Partials.Message, Partials.Reaction]
 })
 
 // logo and stuff
@@ -30,67 +31,59 @@ const MOD_IMAGE_URL = 'https://i.imgur.com/CBDoIWa.png'
 const FRAID_GROUP_ID = '489845165'
 const FRAID_GROUP_LINK = 'https://www.roblox.com/communities/489845165/fraidfg#!/about'
 
-// ─── Modern embed system ──────────────────────────────────────────────────────
-// base embed — footer + logo thumbnail on every single embed automatically
+// ─── Modern "Sins" embed system ───────────────────────────────────────────────
+// Every embed gets: author line (Sins + logo), logo thumbnail top-right,
+// bold title via setTitle, timestamp, and footer — the full discohook look.
+const BOT_NAME = 'Sins'
+
 function baseEmbed() {
   return new EmbedBuilder()
+    .setAuthor({ name: BOT_NAME, iconURL: LOGO_URL })
     .setThumbnail(LOGO_URL)
     .setTimestamp()
-    .setFooter({ text: 'bleed', iconURL: LOGO_URL })
+    .setFooter({ text: BOT_NAME, iconURL: LOGO_URL })
 }
 
-// typed helpers — each sets the color and a clean author header with an icon
-// using author instead of title gives the "discohook" left-icon look
-const ICON = {
-  success : '✅',
-  error   : '❌',
-  mod     : '🔨',
-  info    : 'ℹ️',
-  roblox  : '🎮',
-  warn    : '⚠️',
-  star    : '⭐',
-  lock    : '🔒',
-  voice   : '🔊',
-  tag     : '🏷️',
-  user    : '👤',
-  log     : '📋',
-  setup   : '⚙️',
-  vanity  : '🔗',
+// vibrant color palette per embed type
+const COLOR = {
+  success : 0x23D160,
+  error   : 0xFF3860,
+  mod     : 0xFF6B35,
+  info    : 0x3273DC,
+  roblox  : 0xFFDD57,
+  warn    : 0xFFB347,
+  star    : 0xB86BFF,
+  lock    : 0x485FC8,
+  voice   : 0x00D1B2,
+  tag     : 0x485FC8,
+  user    : 0x209CEE,
+  log     : 0x5C6BC0,
+  setup   : 0xAB47BC,
+  vanity  : 0xE91E8C,
+  warning : 0xFFBB00,
+  mute    : 0x546E7A,
+  action  : 0x1565C0,
 }
 
-function embed(type, title, iconOverride) {
-  const colorMap = {
-    success : 0x2ecc71,
-    error   : 0xe74c3c,
-    mod     : 0xe67e22,
-    info    : 0x3498db,
-    roblox  : 0xf1c40f,
-    warn    : 0xf39c12,
-    star    : 0x9b59b6,
-    lock    : 0x95a5a6,
-    voice   : 0x1abc9c,
-    tag     : 0x34495e,
-    user    : 0x2980b9,
-    log     : 0x7f8c8d,
-    setup   : 0x8e44ad,
-    vanity  : 0xe91e8c,
-  }
-  const icon = iconOverride ?? ICON[type] ?? ''
+// core typed builder — returns a fully styled embed with a bold title
+function embed(type, title) {
   return baseEmbed()
-    .setColor(colorMap[type] ?? 0x2c2f33)
-    .setAuthor({ name: `${icon}  ${title}`, iconURL: LOGO_URL })
+    .setColor(COLOR[type] ?? 0x2B2D31)
+    .setTitle(title)
 }
 
-// convenience wrappers
+// convenience wrappers used throughout the bot
 const successEmbed = t => embed('success', t)
 const errorEmbed   = t => embed('error',   t)
 const modEmbed     = t => embed('mod',     t)
 const infoEmbed    = t => embed('info',    t)
 const robloxEmbed  = t => embed('roblox',  t)
-const warnEmbed    = t => embed('warn',    t)
+const warnEmbed    = t => embed('warning', t)
 const logEmbed     = t => embed('log',     t)
 const setupEmbed   = t => embed('setup',   t)
 const vanityEmbed  = t => embed('vanity',  t)
+const userEmbed    = t => embed('user',    t)
+const actionEmbed  = t => embed('action',  t)
 
 // json file paths for everything
 const TAGS_FILE = path.join(__dirname, 'tags.json')
@@ -114,9 +107,11 @@ const SKULL_FILE = path.join(__dirname, 'skull.json')
 const ACTIVITY_CHECK_FILE = path.join(__dirname, 'activity_check.json')
 const TAGGED_MEMBERS_FILE = path.join(__dirname, 'tagged_members.json')
 
-// ── bleed-src feature files ───────────────────────────────────────────────────
-const VANITY_FILE   = path.join(__dirname, 'vanity.json')
-const AUTOROLE_FILE = path.join(__dirname, 'autorole.json')
+// ── feature files ─────────────────────────────────────────────────────────────
+const VANITY_FILE        = path.join(__dirname, 'vanity.json')
+const WARNS_FILE         = path.join(__dirname, 'warns.json')
+const AUTORESPONDER_FILE = path.join(__dirname, 'autoresponder.json')
+const AUTOROLE_FILE      = path.join(__dirname, 'autorole.json')
 const WELCOME_FILE = path.join(__dirname, 'welcome.json')
 const ANTIINVITE_FILE = path.join(__dirname, 'antiinvite.json')
 const ALTDENTIFIER_FILE = path.join(__dirname, 'altdentifier.json')
@@ -169,9 +164,13 @@ const saveActivityCheck = a => saveJSON(ACTIVITY_CHECK_FILE, a)
 const loadTaggedMembers = () => loadJSON(TAGGED_MEMBERS_FILE)
 const saveTaggedMembers = t => saveJSON(TAGGED_MEMBERS_FILE, t)
 
-// ── bleed-src feature load/save helpers ───────────────────────────────────────
-const loadVanity = () => loadJSON(VANITY_FILE)
-const saveVanity = v => saveJSON(VANITY_FILE, v)
+// ── feature load/save helpers ─────────────────────────────────────────────────
+const loadVanity        = () => loadJSON(VANITY_FILE)
+const saveVanity        = v  => saveJSON(VANITY_FILE, v)
+const loadWarns         = () => loadJSON(WARNS_FILE)
+const saveWarns         = w  => saveJSON(WARNS_FILE, w)
+const loadAutoresponder = () => loadJSON(AUTORESPONDER_FILE)
+const saveAutoresponder = a  => saveJSON(AUTORESPONDER_FILE, a)
 const loadAutorole = () => loadJSON(AUTOROLE_FILE)
 const saveAutorole = a => saveJSON(AUTOROLE_FILE, a)
 const loadWelcome = () => loadJSON(WELCOME_FILE)
@@ -236,6 +235,8 @@ function isWlManager(userId) {
   if (!fs.existsSync(JOINDM_FILE)) saveJoindm({})
   if (!fs.existsSync(LOGS_FILE)) saveLogs({})
   if (!fs.existsSync(VANITY_FILE)) saveVanity({})
+  if (!fs.existsSync(WARNS_FILE)) saveWarns({})
+  if (!fs.existsSync(AUTORESPONDER_FILE)) saveAutoresponder({})
 })()
 
 const getPrefix = () => loadConfig().prefix || '.'
@@ -585,6 +586,8 @@ function buildVmHelpEmbed(prefix) {
 // ─── Caches ───────────────────────────────────────────────────────────────────
 const gcCache          = new Map();
 const snipeCache       = new Map();
+const editSnipeCache   = new Map(); // channelId -> { before, after, author, avatarUrl, editedAt }
+const reactSnipeCache  = new Map(); // channelId -> { emoji, author, content, avatarUrl, removedAt }
 const striptagPending  = new Map(); // userId -> { tagName, members, rank2RoleId }
 
 // ─── Slash commands ───────────────────────────────────────────────────────────
@@ -807,6 +810,55 @@ const slashCommands = [
     .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
     .addChannelOption(o => o.setName('channel').setDescription('channel for strip logs').setRequired(true)),
 
+  // ── bleed.bot inspired commands ───────────────────────────────────────────
+  new SlashCommandBuilder().setName('warn').setDescription('warn a member')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addUserOption(o => o.setName('user').setDescription('member to warn').setRequired(true))
+    .addStringOption(o => o.setName('reason').setDescription('reason').setRequired(false)),
+  new SlashCommandBuilder().setName('warnings').setDescription('show warnings for a member')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addUserOption(o => o.setName('user').setDescription('member to check').setRequired(true)),
+  new SlashCommandBuilder().setName('clearwarns').setDescription('clear all warnings for a member')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addUserOption(o => o.setName('user').setDescription('member to clear').setRequired(true)),
+  new SlashCommandBuilder().setName('delwarn').setDescription('delete a specific warning by index')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addUserOption(o => o.setName('user').setDescription('member').setRequired(true))
+    .addIntegerOption(o => o.setName('index').setDescription('warning number from /warnings').setRequired(true).setMinValue(1)),
+  new SlashCommandBuilder().setName('serverinfo').setDescription('show server information')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS),
+  new SlashCommandBuilder().setName('userinfo').setDescription('show info about a member')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addUserOption(o => o.setName('user').setDescription('member to inspect').setRequired(false)),
+  new SlashCommandBuilder().setName('avatar').setDescription("show a user's avatar")
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
+    .setContexts(ALL_CONTEXTS)
+    .addUserOption(o => o.setName('user').setDescription('user').setRequired(false)),
+  new SlashCommandBuilder().setName('banner').setDescription("show a user's banner")
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
+    .setContexts(ALL_CONTEXTS)
+    .addUserOption(o => o.setName('user').setDescription('user').setRequired(false)),
+  new SlashCommandBuilder().setName('roleinfo').setDescription('show info about a role')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addRoleOption(o => o.setName('role').setDescription('role to inspect').setRequired(true)),
+  new SlashCommandBuilder().setName('editsnipe').setDescription('show the last edited message in this channel')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS),
+  new SlashCommandBuilder().setName('reactsnipe').setDescription('show the last removed reaction in this channel')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS),
+  new SlashCommandBuilder().setName('invites').setDescription('show invite count for a member')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addUserOption(o => o.setName('user').setDescription('member').setRequired(false)),
+  new SlashCommandBuilder().setName('autoresponder').setDescription('manage auto-responses to trigger words')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addStringOption(o => o.setName('action').setDescription('action').setRequired(true)
+      .addChoices(
+        { name: 'add',    value: 'add'    },
+        { name: 'remove', value: 'remove' },
+        { name: 'list',   value: 'list'   }
+      ))
+    .addStringOption(o => o.setName('trigger').setDescription('trigger phrase').setRequired(false))
+    .addStringOption(o => o.setName('response').setDescription('response message').setRequired(false)),
+
   new SlashCommandBuilder().setName('vanityset').setDescription('set server vanity to /yourname and manage fraud pic perms')
     .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
     .addStringOption(o => o.setName('action').setDescription('action').setRequired(true)
@@ -817,6 +869,40 @@ const slashCommands = [
         { name: 'syncfraud', value: 'syncfraud' }
       ))
     .addRoleOption(o => o.setName('picrole').setDescription('role to give users who have /fraud in custom status').setRequired(false)),
+  new SlashCommandBuilder().setName('convert').setDescription('get a roblox user id from their username')
+    .addStringOption(o => o.setName('username').setDescription('roblox username').setRequired(true)),
+  new SlashCommandBuilder().setName('dm').setDescription('dm a user or everyone with a role')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addStringOption(o => o.setName('message').setDescription('message to send').setRequired(true))
+    .addUserOption(o => o.setName('user').setDescription('user to dm').setRequired(false))
+    .addRoleOption(o => o.setName('role').setDescription('role to dm everyone in').setRequired(false)),
+  new SlashCommandBuilder().setName('drag').setDescription('drag a user into your voice channel')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addUserOption(o => o.setName('user').setDescription('user to drag').setRequired(true)),
+  new SlashCommandBuilder().setName('strip').setDescription('strip a roblox user\'s rank')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addStringOption(o => o.setName('username').setDescription('roblox username').setRequired(true))
+    .addStringOption(o => o.setName('reason').setDescription('reason for strip').setRequired(true)),
+  new SlashCommandBuilder().setName('striptag').setDescription('strip all users tracked under a tag')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addStringOption(o => o.setName('tagname').setDescription('name of the tag').setRequired(true)),
+  new SlashCommandBuilder().setName('vm').setDescription('voicemaster controls')
+    .setIntegrationTypes(GUILD_INSTALLS).setContexts(GUILD_CONTEXTS)
+    .addStringOption(o => o.setName('action').setDescription('action to perform').setRequired(true)
+      .addChoices(
+        { name: 'setup',  value: 'setup'  },
+        { name: 'lock',   value: 'lock'   },
+        { name: 'unlock', value: 'unlock' },
+        { name: 'claim',  value: 'claim'  },
+        { name: 'limit',  value: 'limit'  },
+        { name: 'allow',  value: 'allow'  },
+        { name: 'deny',   value: 'deny'   },
+        { name: 'rename', value: 'rename' },
+        { name: 'reset',  value: 'reset'  }
+      ))
+    .addUserOption(o => o.setName('user').setDescription('user to allow/deny').setRequired(false))
+    .addIntegerOption(o => o.setName('limit').setDescription('user limit (0 = no limit) for limit action').setRequired(false).setMinValue(0).setMaxValue(99))
+    .addStringOption(o => o.setName('name').setDescription('new channel name for rename action').setRequired(false)),
 ].map(c => c.toJSON());
 
 // ─── Status helper ────────────────────────────────────────────────────────────
@@ -1014,6 +1100,33 @@ client.on('guildMemberRemove', async member => {
         ).setTimestamp()] });
     }
   } catch {}
+});
+
+// ─── messageUpdate: cache for editsnipe ───────────────────────────────────────
+client.on('messageUpdate', (oldMsg, newMsg) => {
+  if (!oldMsg.author || oldMsg.author.bot) return;
+  if (oldMsg.content === newMsg.content) return;
+  editSnipeCache.set(oldMsg.channel.id, {
+    before   : oldMsg.content,
+    after    : newMsg.content,
+    author   : oldMsg.author.tag,
+    avatarUrl: oldMsg.author.displayAvatarURL(),
+    editedAt : Date.now(),
+  });
+});
+
+// ─── messageReactionRemove: cache for reactsnipe ──────────────────────────────
+client.on('messageReactionRemove', async (reaction, user) => {
+  if (user.bot) return;
+  if (reaction.partial) try { await reaction.fetch(); } catch { return; }
+  const msg = reaction.message.partial ? await reaction.message.fetch().catch(() => null) : reaction.message;
+  reactSnipeCache.set(reaction.message.channel.id, {
+    emoji    : reaction.emoji.toString(),
+    author   : user.tag,
+    avatarUrl: user.displayAvatarURL(),
+    content  : msg?.content ?? '',
+    removedAt: Date.now(),
+  });
 });
 
 // ─── presenceUpdate: grant/revoke pic role when repping the server vanity ─────
@@ -1247,17 +1360,42 @@ client.on('interactionCreate', async interaction => {
     const username = interaction.options.getString('username');
     try {
       const userBasic = (await (await fetch('https://users.roblox.com/v1/usernames/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames: [username], excludeBannedUsers: false }) })).json()).data?.[0];
-      if (!userBasic) return interaction.editReply("couldn't find that user")
-      const userId    = userBasic.id;
-      const user      = await (await fetch(`https://users.roblox.com/v1/users/${userId}`)).json();
-      const created   = new Date(user.created).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-      const avatarUrl = (await (await fetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=420x420&format=Png&isCircular=false`)).json()).data?.[0]?.imageUrl;
+      if (!userBasic) return interaction.editReply("couldn't find that user");
+      const userId = userBasic.id;
+      const [user, avatarRes, friendsRes, pastNamesRes, groupsRes] = await Promise.all([
+        fetch(`https://users.roblox.com/v1/users/${userId}`).then(r => r.json()),
+        fetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=420x420&format=Png&isCircular=false`).then(r => r.json()),
+        fetch(`https://friends.roblox.com/v1/users/${userId}/friends/count`).then(r => r.json()).catch(() => ({ count: 'n/a' })),
+        fetch(`https://users.roblox.com/v1/users/${userId}/username-history?limit=10&sortOrder=Asc`).then(r => r.json()).catch(() => ({ data: [] })),
+        fetch(`https://groups.roblox.com/v1/users/${userId}/groups/roles`).then(r => r.json()).catch(() => ({ data: [] })),
+      ]);
+      const avatarUrl  = avatarRes.data?.[0]?.imageUrl;
       const profileUrl = `https://www.roblox.com/users/${userId}/profile`;
-      return interaction.editReply({ embeds: [baseEmbed().setTitle(`${user.displayName} (@${user.name})`).setURL(profileUrl).setColor(0x1b6fe8)
-        .addFields({ name: 'created', value: created, inline: true }, { name: 'user id', value: `${userId}`, inline: true }).setThumbnail(avatarUrl).setTimestamp()],
-        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('profile').setStyle(ButtonStyle.Link).setURL(profileUrl), new ButtonBuilder().setLabel('games').setStyle(ButtonStyle.Link).setURL(`${profileUrl}#sortName=Games`))]
+      const created    = new Date(user.created).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const friends    = friendsRes.count ?? 'n/a';
+      const pastNames  = (pastNamesRes.data ?? []).map(u => u.name);
+      const groups     = (groupsRes.data ?? []).map(g => g.group.name);
+      const status     = user.description?.trim() || 'None';
+      const embed = baseEmbed()
+        .setTitle(`${user.displayName} (@${user.name})`)
+        .setURL(profileUrl)
+        .setColor(0x1b6fe8)
+        .setDescription(`@${user.name}`)
+        .setThumbnail(avatarUrl)
+        .addFields(
+          { name: 'user id',  value: `${userId}`, inline: true },
+          { name: 'created',  value: created,      inline: true },
+          { name: 'friends',  value: `${friends}`, inline: true },
+          { name: 'about',    value: status,        inline: false },
+        );
+      if (pastNames.length) embed.addFields({ name: `past usernames (${pastNames.length})`, value: pastNames.join(', '), inline: false });
+      if (groups.length)    embed.addFields({ name: `groups (${groups.length})`, value: groups.join(', '), inline: false });
+      embed.setTimestamp();
+      return interaction.editReply({
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('profile').setStyle(ButtonStyle.Link).setURL(profileUrl))]
       });
-    } catch { return interaction.editReply("something went wrong loading their info, try again") }
+    } catch (e) { return interaction.editReply("something went wrong loading their info, try again"); }
   }
 
   if (commandName === 'gc') {
@@ -1346,7 +1484,7 @@ client.on('interactionCreate', async interaction => {
 
   // ── Whitelist-required slash commands ────────────────────────────────────────
   if (!loadWhitelist().includes(interaction.user.id)) {
-    const openCommands = new Set(['roblox', 'gc', 'help', 'vmhelp', 'afk', 'snipe', 'purge', 'about', 'vstatus']);
+    const openCommands = new Set(['roblox', 'gc', 'help', 'vmhelp', 'afk', 'snipe', 'purge', 'about', 'vstatus', 'avatar', 'banner', 'serverinfo', 'userinfo', 'invites', 'roleinfo', 'editsnipe', 'reactsnipe', 'cs', 'grouproles', 'convert']);
     if (commandName === 'verify' && guild) {
       const vwl = loadVerifyWhitelist();
       const guildVwl = vwl[guild.id] || { roles: [], users: [] };
@@ -1356,8 +1494,6 @@ client.on('interactionCreate', async interaction => {
       if (!isVwlAllowed) return interaction.reply({ content: "you're not whitelisted for that", ephemeral: true });
     } else if (!openCommands.has(commandName)) {
       return interaction.reply({ content: "you're not whitelisted for that", ephemeral: true });
-    } else {
-      return;
     }
   }
 
@@ -1695,8 +1831,7 @@ client.on('interactionCreate', async interaction => {
     const sub  = interaction.options.getString('action');
     const mgrs = loadWlManagers();
     if (sub === 'list') {
-      const wl = loadWhitelist();
-      if (!wl.includes(interaction.user.id)) return interaction.reply({ content: "you're not whitelisted for that", ephemeral: true });
+      if (!isWlManager(interaction.user.id)) return interaction.reply({ content: "only whitelist managers can view the manager list", ephemeral: true });
       const all = [...new Set([...mgrs, ...(process.env.WHITELIST_MANAGERS || '').split(',').filter(Boolean)])];
       if (!all.length) return interaction.reply({ embeds: [baseEmbed().setTitle('whitelist managers').setColor(0x1b6fe8).setDescription('no managers set')] });
       return interaction.reply({ embeds: [baseEmbed().setTitle('whitelist managers').setColor(0x1b6fe8).setDescription(all.map((id, i) => `${i + 1}. <@${id}> (\`${id}\`)`).join('\n')).setTimestamp()] });
@@ -2087,6 +2222,264 @@ client.on('interactionCreate', async interaction => {
       .addFields({ name: 'channel', value: `${ch}`, inline: true }, { name: 'set by', value: interaction.user.tag, inline: true })] });
   }
 
+  // ── /warn ─────────────────────────────────────────────────────────────────────
+  if (commandName === 'warn') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
+      return interaction.reply({ content: 'you need **Moderate Members** to warn', ephemeral: true });
+    const target = interaction.options.getMember('user') ?? interaction.options.getUser('user');
+    const reason = interaction.options.getString('reason') ?? 'no reason given';
+    if (!target) return interaction.reply({ content: "couldn't find that user", ephemeral: true });
+    const userId = target.id ?? target.user?.id;
+    const userTag = target.user?.tag ?? target.tag ?? 'Unknown';
+    const warnsData = loadWarns();
+    if (!warnsData[guild.id]) warnsData[guild.id] = {};
+    if (!warnsData[guild.id][userId]) warnsData[guild.id][userId] = [];
+    warnsData[guild.id][userId].push({ reason, mod: interaction.user.tag, ts: Date.now() });
+    saveWarns(warnsData);
+    const count = warnsData[guild.id][userId].length;
+    return interaction.reply({ embeds: [warnEmbed('Member Warned')
+      .setThumbnail(target.user?.displayAvatarURL() ?? target.displayAvatarURL?.() ?? null)
+      .addFields(
+        { name: 'user', value: `<@${userId}> (${userTag})`, inline: true },
+        { name: 'warned by', value: interaction.user.tag, inline: true },
+        { name: 'total warnings', value: `${count}`, inline: true },
+        { name: 'reason', value: reason }
+      )] });
+  }
+
+  if (commandName === 'warnings') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    const target = interaction.options.getUser('user');
+    const warnsData = loadWarns();
+    const list = warnsData[guild.id]?.[target.id] ?? [];
+    if (!list.length) return interaction.reply({ embeds: [infoEmbed('No Warnings')
+      .setDescription(`**${target.tag}** has no warnings`)] });
+    const lines = list.map((w, i) =>
+      `**${i + 1}.** ${w.reason} — by **${w.mod}** <t:${Math.floor(w.ts / 1000)}:R>`
+    ).join('\n');
+    return interaction.reply({ embeds: [warnEmbed(`Warnings — ${target.tag}`)
+      .setThumbnail(target.displayAvatarURL())
+      .setDescription(lines)
+      .addFields({ name: 'total', value: `${list.length}`, inline: true })] });
+  }
+
+  if (commandName === 'clearwarns') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
+      return interaction.reply({ content: 'you need **Moderate Members** to clear warns', ephemeral: true });
+    const target = interaction.options.getUser('user');
+    const warnsData = loadWarns();
+    const count = warnsData[guild.id]?.[target.id]?.length ?? 0;
+    if (!warnsData[guild.id]) warnsData[guild.id] = {};
+    warnsData[guild.id][target.id] = [];
+    saveWarns(warnsData);
+    return interaction.reply({ embeds: [successEmbed('Warnings Cleared')
+      .addFields(
+        { name: 'user', value: `<@${target.id}> (${target.tag})`, inline: true },
+        { name: 'cleared', value: `${count} warning${count !== 1 ? 's' : ''}`, inline: true },
+        { name: 'cleared by', value: interaction.user.tag, inline: true }
+      )] });
+  }
+
+  if (commandName === 'delwarn') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
+      return interaction.reply({ content: 'you need **Moderate Members**', ephemeral: true });
+    const target = interaction.options.getUser('user');
+    const idx = interaction.options.getInteger('index') - 1;
+    const warnsData = loadWarns();
+    const list = warnsData[guild.id]?.[target.id] ?? [];
+    if (!list[idx]) return interaction.reply({ content: `no warning at index **${idx + 1}**`, ephemeral: true });
+    const removed = list.splice(idx, 1)[0];
+    saveWarns(warnsData);
+    return interaction.reply({ embeds: [successEmbed('Warning Removed')
+      .addFields(
+        { name: 'user', value: `<@${target.id}>`, inline: true },
+        { name: 'removed #', value: `${idx + 1}`, inline: true },
+        { name: 'reason was', value: removed.reason }
+      )] });
+  }
+
+  // ── /serverinfo ───────────────────────────────────────────────────────────────
+  if (commandName === 'serverinfo') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    const owner = await guild.fetchOwner().catch(() => null);
+    const channels = guild.channels.cache;
+    const textCount  = channels.filter(c => c.type === ChannelType.GuildText).size;
+    const voiceCount = channels.filter(c => c.type === ChannelType.GuildVoice).size;
+    const roleCount  = guild.roles.cache.size - 1;
+    const boosts     = guild.premiumSubscriptionCount ?? 0;
+    const tier       = guild.premiumTier;
+    return interaction.reply({ embeds: [infoEmbed(guild.name)
+      .setThumbnail(guild.iconURL({ size: 256 }) ?? LOGO_URL)
+      .addFields(
+        { name: 'owner',    value: owner ? `<@${owner.id}>` : 'unknown',         inline: true },
+        { name: 'members',  value: `${guild.memberCount}`,                        inline: true },
+        { name: 'roles',    value: `${roleCount}`,                                inline: true },
+        { name: 'text',     value: `${textCount}`,                                inline: true },
+        { name: 'voice',    value: `${voiceCount}`,                               inline: true },
+        { name: 'boosts',   value: `${boosts} (tier ${tier})`,                    inline: true },
+        { name: 'created',  value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true },
+        { name: 'id',       value: guild.id,                                      inline: true }
+      )
+      .setImage(guild.bannerURL({ size: 1024 }) ?? null)] });
+  }
+
+  // ── /userinfo ─────────────────────────────────────────────────────────────────
+  if (commandName === 'userinfo') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    const target = interaction.options.getMember('user') ?? interaction.member;
+    const user   = target.user;
+    const roles  = target.roles.cache.filter(r => r.id !== guild.id)
+      .sort((a, b) => b.position - a.position).map(r => `${r}`).slice(0, 10).join(' ');
+    return interaction.reply({ embeds: [userEmbed(user.tag)
+      .setThumbnail(user.displayAvatarURL({ size: 256 }))
+      .addFields(
+        { name: 'id',        value: user.id,                                             inline: true },
+        { name: 'nickname',  value: target.nickname ?? 'none',                           inline: true },
+        { name: 'joined',    value: `<t:${Math.floor(target.joinedTimestamp / 1000)}:R>`,inline: true },
+        { name: 'created',   value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
+        { name: 'bot',       value: user.bot ? 'yes' : 'no',                             inline: true },
+        { name: `roles [${target.roles.cache.size - 1}]`, value: roles || 'none' }
+      )] });
+  }
+
+  // ── /avatar ───────────────────────────────────────────────────────────────────
+  if (commandName === 'avatar') {
+    const target = interaction.options.getUser('user') ?? interaction.user;
+    const url = target.displayAvatarURL({ size: 1024 });
+    return interaction.reply({ embeds: [userEmbed(`${target.tag}'s Avatar`)
+      .setThumbnail(null).setImage(url)
+      .setDescription(`[Open full size](${url})`)] });
+  }
+
+  // ── /banner ───────────────────────────────────────────────────────────────────
+  if (commandName === 'banner') {
+    const target = await (interaction.options.getUser('user') ?? interaction.user).fetch();
+    const url = target.bannerURL({ size: 1024 });
+    if (!url) return interaction.reply({ embeds: [infoEmbed(`${target.tag} has no banner`)] });
+    return interaction.reply({ embeds: [userEmbed(`${target.tag}'s Banner`)
+      .setThumbnail(null).setImage(url)
+      .setDescription(`[Open full size](${url})`)] });
+  }
+
+  // ── /roleinfo ─────────────────────────────────────────────────────────────────
+  if (commandName === 'roleinfo') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    const role = interaction.options.getRole('role');
+    const members = guild.members.cache.filter(m => m.roles.cache.has(role.id)).size;
+    return interaction.reply({ embeds: [new EmbedBuilder()
+      .setColor(role.color || 0x2B2D31)
+      .setAuthor({ name: BOT_NAME, iconURL: LOGO_URL })
+      .setTitle(role.name)
+      .setTimestamp()
+      .setFooter({ text: BOT_NAME, iconURL: LOGO_URL })
+      .addFields(
+        { name: 'id',        value: role.id,                                          inline: true },
+        { name: 'color',     value: role.hexColor,                                    inline: true },
+        { name: 'members',   value: `${members}`,                                     inline: true },
+        { name: 'mentionable', value: role.mentionable ? 'yes' : 'no',              inline: true },
+        { name: 'hoisted',   value: role.hoist ? 'yes' : 'no',                       inline: true },
+        { name: 'position',  value: `${role.position}`,                               inline: true },
+        { name: 'created',   value: `<t:${Math.floor(role.createdTimestamp / 1000)}:R>`, inline: true }
+      )] });
+  }
+
+  // ── /editsnipe ────────────────────────────────────────────────────────────────
+  if (commandName === 'editsnipe') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    const data = editSnipeCache.get(interaction.channel.id);
+    if (!data) return interaction.reply({ embeds: [infoEmbed('Nothing to Snipe')
+      .setDescription('no recent message edits in this channel')] });
+    return interaction.reply({ embeds: [logEmbed('Edit Sniped')
+      .setThumbnail(data.avatarUrl)
+      .addFields(
+        { name: 'author',  value: data.author, inline: true },
+        { name: 'edited',  value: `<t:${Math.floor(data.editedAt / 1000)}:R>`, inline: true },
+        { name: 'before',  value: data.before?.slice(0, 1024) || '*(empty)*' },
+        { name: 'after',   value: data.after?.slice(0, 1024)  || '*(empty)*' }
+      )] });
+  }
+
+  // ── /reactsnipe ───────────────────────────────────────────────────────────────
+  if (commandName === 'reactsnipe') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    const data = reactSnipeCache.get(interaction.channel.id);
+    if (!data) return interaction.reply({ embeds: [infoEmbed('Nothing to Snipe')
+      .setDescription('no recent removed reactions in this channel')] });
+    return interaction.reply({ embeds: [logEmbed('Reaction Sniped')
+      .setThumbnail(data.avatarUrl)
+      .addFields(
+        { name: 'user',    value: data.author, inline: true },
+        { name: 'emoji',   value: data.emoji,  inline: true },
+        { name: 'removed', value: `<t:${Math.floor(data.removedAt / 1000)}:R>`, inline: true },
+        { name: 'message', value: data.content?.slice(0, 1024) || '*(no content)*' }
+      )] });
+  }
+
+  // ── /invites ──────────────────────────────────────────────────────────────────
+  if (commandName === 'invites') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    const target = interaction.options.getUser('user') ?? interaction.user;
+    await interaction.deferReply();
+    try {
+      const invites = await guild.invites.fetch();
+      const userInvites = invites.filter(inv => inv.inviter?.id === target.id);
+      const total = userInvites.reduce((sum, inv) => sum + (inv.uses ?? 0), 0);
+      return interaction.editReply({ embeds: [infoEmbed(`Invites — ${target.tag}`)
+        .setThumbnail(target.displayAvatarURL())
+        .addFields(
+          { name: 'total invites', value: `${total}`, inline: true },
+          { name: 'invite links',  value: `${userInvites.size}`, inline: true }
+        )] });
+    } catch { return interaction.editReply('could not fetch invites — missing **Manage Guild** permission'); }
+  }
+
+  // ── /autoresponder ────────────────────────────────────────────────────────────
+  if (commandName === 'autoresponder') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageGuild))
+      return interaction.reply({ content: 'you need **Manage Server**', ephemeral: true });
+    const action   = interaction.options.getString('action');
+    const trigger  = interaction.options.getString('trigger');
+    const response = interaction.options.getString('response');
+    const arData   = loadAutoresponder();
+    if (!arData[guild.id]) arData[guild.id] = [];
+
+    if (action === 'add') {
+      if (!trigger || !response) return interaction.reply({ content: 'provide both a trigger and a response', ephemeral: true });
+      if (arData[guild.id].find(r => r.trigger.toLowerCase() === trigger.toLowerCase()))
+        return interaction.reply({ content: `trigger **${trigger}** already exists — remove it first`, ephemeral: true });
+      arData[guild.id].push({ trigger, response });
+      saveAutoresponder(arData);
+      return interaction.reply({ embeds: [successEmbed('Autoresponder Added')
+        .addFields(
+          { name: 'trigger',  value: `\`${trigger}\`` },
+          { name: 'response', value: response }
+        )] });
+    }
+
+    if (action === 'remove') {
+      if (!trigger) return interaction.reply({ content: 'provide the trigger to remove', ephemeral: true });
+      const before = arData[guild.id].length;
+      arData[guild.id] = arData[guild.id].filter(r => r.trigger.toLowerCase() !== trigger.toLowerCase());
+      if (arData[guild.id].length === before)
+        return interaction.reply({ content: `no autoresponder with trigger **${trigger}**`, ephemeral: true });
+      saveAutoresponder(arData);
+      return interaction.reply({ embeds: [successEmbed('Autoresponder Removed')
+        .addFields({ name: 'trigger removed', value: `\`${trigger}\`` })] });
+    }
+
+    if (action === 'list') {
+      const list = arData[guild.id];
+      if (!list?.length) return interaction.reply({ embeds: [infoEmbed('Autoresponders')
+        .setDescription('no autoresponders set — add one with `/autoresponder add`')] });
+      const lines = list.map((r, i) => `**${i + 1}.** \`${r.trigger}\` → ${r.response}`).join('\n');
+      return interaction.reply({ embeds: [infoEmbed('Autoresponders').setDescription(lines)] });
+    }
+  }
+
   // ── /vanityset ────────────────────────────────────────────────────────────────
   if (commandName === 'vanityset') {
     if (!guild) return interaction.reply({ content: 'this only works in a server', ephemeral: true });
@@ -2101,7 +2494,7 @@ client.on('interactionCreate', async interaction => {
 
     if (action === 'set') {
       // set vanity URL to /username and store the pic role
-      const vanityCode = interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32) || 'bleed';
+      const vanityCode = interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32) || 'sins';
       let vanityResult = null;
       try {
         await guild.setVanityCode(vanityCode);
@@ -2170,6 +2563,245 @@ client.on('interactionCreate', async interaction => {
         )] });
     }
   }
+
+  // ── /convert ──────────────────────────────────────────────────────────────────
+  if (commandName === 'convert') {
+    const username = interaction.options.getString('username');
+    try {
+      const userBasic = (await (await fetch('https://users.roblox.com/v1/usernames/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames: [username], excludeBannedUsers: false }) })).json()).data?.[0];
+      if (!userBasic) return interaction.reply({ content: "couldn't find that user", ephemeral: true });
+      return interaction.reply({ embeds: [baseEmbed().setColor(0x1b6fe8).setTitle('Roblox ID Lookup')
+        .addFields({ name: 'username', value: userBasic.name, inline: true }, { name: 'display name', value: userBasic.displayName || userBasic.name, inline: true }, { name: 'user id', value: `\`${userBasic.id}\``, inline: true })
+        .setFooter({ text: 'roblox user id' }).setTimestamp()] });
+    } catch { return interaction.reply({ content: 'something went wrong, try again', ephemeral: true }); }
+  }
+
+  // ── /dm ───────────────────────────────────────────────────────────────────────
+  if (commandName === 'dm') {
+    if (!isWlManager(interaction.user.id)) return interaction.reply({ content: 'only whitelist managers can use `/dm`', ephemeral: true });
+    const dmMsg   = interaction.options.getString('message');
+    const target  = interaction.options.getUser('user');
+    const dmRole  = interaction.options.getRole('role');
+    if (!target && !dmRole) return interaction.reply({ content: 'provide a user or a role', ephemeral: true });
+    if (dmRole) {
+      if (!guild) return interaction.reply({ content: "can't DM a role outside a server", ephemeral: true });
+      await interaction.deferReply({ ephemeral: true });
+      await guild.members.fetch();
+      const members = dmRole.members;
+      if (!members.size) return interaction.editReply('no members have that role');
+      let sent = 0, failed = 0;
+      for (const [, member] of members) {
+        if (member.user.bot) continue;
+        try {
+          await member.send({ embeds: [baseEmbed().setColor(0x1b6fe8).setTitle('Message').setDescription(dmMsg).setFooter({ text: `from ${interaction.user.tag}` }).setTimestamp()] });
+          sent++;
+        } catch { failed++; }
+        await new Promise(r => setTimeout(r, 500));
+      }
+      return interaction.editReply(`done — sent: **${sent}**, failed: **${failed}**`);
+    }
+    if (target.bot) return interaction.reply({ content: "can't DM a bot", ephemeral: true });
+    try {
+      await target.send({ embeds: [baseEmbed().setColor(0x1b6fe8).setTitle('Message').setDescription(dmMsg).setFooter({ text: `from ${interaction.user.tag}` }).setTimestamp()] });
+      return interaction.reply({ content: `DM sent to **${target.tag}**`, ephemeral: true });
+    } catch { return interaction.reply({ content: `couldn't DM **${target.tag}** — they might have DMs off`, ephemeral: true }); }
+  }
+
+  // ── /drag ─────────────────────────────────────────────────────────────────────
+  if (commandName === 'drag') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    const target = interaction.options.getMember('user');
+    if (!target) return interaction.reply({ content: 'that user is not in this server', ephemeral: true });
+    const myVc = interaction.member?.voice?.channel;
+    if (!myVc) return interaction.reply({ content: "you're not in a voice channel", ephemeral: true });
+    try {
+      await target.voice.setChannel(myVc);
+      return interaction.reply({ embeds: [baseEmbed().setColor(0x57f287).setDescription(`dragged **${target.displayName}** to **${myVc.name}**`)] });
+    } catch { return interaction.reply({ content: "couldn't drag them — they might not be in a vc", ephemeral: true }); }
+  }
+
+  // ── /strip ────────────────────────────────────────────────────────────────────
+  if (commandName === 'strip') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    if (!loadWhitelist().includes(interaction.user.id)) return interaction.reply({ content: "you're not whitelisted to use `/strip`", ephemeral: true });
+    const robloxUser = interaction.options.getString('username');
+    const reason     = interaction.options.getString('reason');
+    const taggedMembers = loadTaggedMembers();
+    let foundTag = null;
+    for (const [tagName, members] of Object.entries(taggedMembers)) {
+      if (members.map(m => m.toLowerCase()).includes(robloxUser.toLowerCase())) { foundTag = tagName; break; }
+    }
+    if (!foundTag) return interaction.reply({ content: `**${robloxUser}** doesn't have any tracked tag`, ephemeral: true });
+    const groupId = process.env.ROBLOX_GROUP_ID;
+    if (!groupId) return interaction.reply({ content: '`ROBLOX_GROUP_ID` isn\'t set', ephemeral: true });
+    let rank2RoleId;
+    try {
+      const rolesData = await (await fetch(`https://groups.roblox.com/v1/groups/${groupId}/roles`)).json();
+      const rank2 = rolesData.roles?.find(r => r.rank === 1);
+      if (!rank2) return interaction.reply({ content: "couldn't find a rank 1 role in the group", ephemeral: true });
+      rank2RoleId = String(rank2.id);
+    } catch { return interaction.reply({ content: "couldn't fetch group roles, try again", ephemeral: true }); }
+    await interaction.deferReply();
+    try {
+      let result, skipReason = null;
+      try {
+        result = await rankRobloxUser(robloxUser, rank2RoleId);
+      } catch (rankErr) {
+        const msg = rankErr.message?.toLowerCase() ?? '';
+        if (msg.includes('same role'))         skipReason = 'already at rank 1 (balls)';
+        else if (msg.includes("isn't in the group")) skipReason = 'not in group — tag removed only';
+        if (skipReason) {
+          const userBasic = (await (await fetch('https://users.roblox.com/v1/usernames/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames: [robloxUser], excludeBannedUsers: false }) })).json()).data?.[0];
+          result = { displayName: userBasic?.displayName || robloxUser, userId: userBasic?.id || 'unknown', avatarUrl: null };
+        } else { throw rankErr; }
+      }
+      taggedMembers[foundTag] = taggedMembers[foundTag].filter(m => m.toLowerCase() !== robloxUser.toLowerCase());
+      if (!taggedMembers[foundTag].length) delete taggedMembers[foundTag];
+      saveTaggedMembers(taggedMembers);
+      const embed = baseEmbed().setTitle('strip').setColor(0x57f287)
+        .addFields(
+          { name: 'user',       value: result.displayName,           inline: true },
+          { name: 'tag removed', value: foundTag,                   inline: true },
+          { name: 'stripped by', value: interaction.user.tag,        inline: true },
+          { name: 'reason',     value: reason }
+        ).setTimestamp();
+      if (skipReason)      embed.setFooter({ text: skipReason });
+      if (result.avatarUrl) embed.setThumbnail(result.avatarUrl);
+      await interaction.editReply({ embeds: [embed] });
+      const sLog = baseEmbed().setTitle('strip log').setColor(0xed4245)
+        .addFields(
+          { name: 'user',       value: result.displayName,              inline: true },
+          { name: 'tag removed', value: foundTag,                      inline: true },
+          { name: 'stripped by', value: `<@${interaction.user.id}>`,   inline: true },
+          { name: 'reason',     value: reason }
+        ).setFooter({ text: `roblox id: ${result.userId}${skipReason ? ` • ${skipReason}` : ''}` }).setTimestamp();
+      if (result.avatarUrl) sLog.setThumbnail(result.avatarUrl);
+      await sendStripLog(guild, sLog);
+    } catch (err) {
+      await interaction.editReply({ embeds: [baseEmbed().setColor(0xed4245).setDescription(`couldn't strip them — ${err.message}`)] });
+      await sendStripLog(guild, baseEmbed().setTitle('strip failed').setColor(0xfee75c)
+        .addFields(
+          { name: 'user', value: robloxUser, inline: true },
+          { name: 'tag',  value: foundTag,   inline: true },
+          { name: 'attempted by', value: `<@${interaction.user.id}>`, inline: true },
+          { name: 'reason', value: reason },
+          { name: 'error',  value: err.message }
+        ).setTimestamp());
+    }
+  }
+
+  // ── /striptag ─────────────────────────────────────────────────────────────────
+  if (commandName === 'striptag') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    if (!isWlManager(interaction.user.id)) return interaction.reply({ content: 'only whitelist managers can use `/striptag`', ephemeral: true });
+    const tagName = interaction.options.getString('tagname').toLowerCase();
+    const tags = loadTags();
+    if (!tags[tagName]) return interaction.reply({ content: `no tag called **${tagName}** exists`, ephemeral: true });
+    const taggedMembers = loadTaggedMembers();
+    const members = taggedMembers[tagName] || [];
+    if (!members.length) return interaction.reply({ content: `nobody is tracked under tag **${tagName}**`, ephemeral: true });
+    const groupId = process.env.ROBLOX_GROUP_ID;
+    if (!groupId) return interaction.reply({ content: '`ROBLOX_GROUP_ID` isn\'t set', ephemeral: true });
+    let rank2RoleId;
+    try {
+      const rolesData = await (await fetch(`https://groups.roblox.com/v1/groups/${groupId}/roles`)).json();
+      const rank2 = rolesData.roles?.find(r => r.rank === 1);
+      if (!rank2) return interaction.reply({ content: "couldn't find a rank 1 role in the group", ephemeral: true });
+      rank2RoleId = String(rank2.id);
+    } catch { return interaction.reply({ content: "couldn't fetch group roles, try again", ephemeral: true }); }
+    await interaction.deferReply();
+    let stripped = 0, skipped = 0, failed = 0;
+    for (const robloxUser of [...members]) {
+      try {
+        await rankRobloxUser(robloxUser, rank2RoleId);
+        stripped++;
+      } catch (e) {
+        const em = e.message?.toLowerCase() ?? '';
+        if (em.includes('same role') || em.includes("isn't in the group")) skipped++;
+        else failed++;
+      }
+    }
+    delete taggedMembers[tagName];
+    saveTaggedMembers(taggedMembers);
+    return interaction.editReply({ embeds: [baseEmbed().setTitle('striptag complete').setColor(0x57f287)
+      .addFields(
+        { name: 'tag',      value: tagName,        inline: true },
+        { name: 'stripped', value: `${stripped}`,  inline: true },
+        { name: 'skipped',  value: `${skipped}`,   inline: true },
+        { name: 'failed',   value: `${failed}`,    inline: true }
+      ).setTimestamp()] });
+  }
+
+  // ── /vm ───────────────────────────────────────────────────────────────────────
+  if (commandName === 'vm') {
+    if (!guild) return interaction.reply({ content: 'server only', ephemeral: true });
+    const sub = interaction.options.getString('action');
+    if (sub === 'setup') {
+      if (!loadWhitelist().includes(interaction.user.id)) return interaction.reply({ content: "you're not whitelisted for this", ephemeral: true });
+      await interaction.deferReply();
+      try {
+        const category = await guild.channels.create({ name: 'Voice Master', type: ChannelType.GuildCategory });
+        const createVc = await guild.channels.create({ name: '➕ Create VC', type: ChannelType.GuildVoice, parent: category.id });
+        const iface    = await guild.channels.create({ name: 'interface', type: ChannelType.GuildText, parent: category.id });
+        const ifaceMsg = await iface.send({ embeds: [buildVmInterfaceEmbed(guild)], components: buildVmInterfaceRows() });
+        const vmConfig = loadVmConfig();
+        vmConfig[guild.id] = { categoryId: category.id, createChannelId: createVc.id, interfaceChannelId: iface.id, interfaceMessageId: ifaceMsg.id };
+        saveVmConfig(vmConfig);
+        return interaction.editReply({ embeds: [baseEmbed().setColor(0x57f287).setDescription(`✅ voicemaster set up! join **${createVc.name}** to create a vc.`)] });
+      } catch (e) { return interaction.editReply(`setup failed — ${e.message}`); }
+    }
+    const vc = interaction.member?.voice?.channel;
+    if (!vc) return interaction.reply({ content: 'you need to be in your voice channel', ephemeral: true });
+    const vmChannels = loadVmChannels();
+    const chData = vmChannels[vc.id];
+    if (!chData) return interaction.reply({ content: "that's not a voicemaster channel", ephemeral: true });
+    const isOwner = chData.ownerId === interaction.user.id;
+    const everyone = guild.roles.everyone;
+
+    if (sub === 'lock')   { if (!isOwner) return interaction.reply({ content: "you don't own this channel", ephemeral: true }); await vc.permissionOverwrites.edit(everyone, { Connect: false }); return interaction.reply({ embeds: [baseEmbed().setColor(0xed4245).setDescription('🔒 channel locked')] }); }
+    if (sub === 'unlock') { if (!isOwner) return interaction.reply({ content: "you don't own this channel", ephemeral: true }); await vc.permissionOverwrites.edit(everyone, { Connect: null }); return interaction.reply({ embeds: [baseEmbed().setColor(0x57f287).setDescription('🔓 channel unlocked')] }); }
+    if (sub === 'claim')  {
+      if (vc.members.has(chData.ownerId)) return interaction.reply({ content: 'the owner is still in the channel', ephemeral: true });
+      chData.ownerId = interaction.user.id; vmChannels[vc.id] = chData; saveVmChannels(vmChannels);
+      return interaction.reply({ embeds: [baseEmbed().setColor(0x57f287).setDescription(`👑 you now own **${vc.name}**`)] });
+    }
+    if (sub === 'limit') {
+      if (!isOwner) return interaction.reply({ content: "you don't own this channel", ephemeral: true });
+      const n = interaction.options.getInteger('limit') ?? 0;
+      await vc.setUserLimit(n);
+      return interaction.reply({ embeds: [baseEmbed().setColor(0x57f287).setDescription(`limit set to **${n === 0 ? 'no limit' : n}**`)] });
+    }
+    if (sub === 'allow') {
+      if (!isOwner) return interaction.reply({ content: "you don't own this channel", ephemeral: true });
+      const target = interaction.options.getMember('user');
+      if (!target) return interaction.reply({ content: 'provide a user with the user option', ephemeral: true });
+      await vc.permissionOverwrites.edit(target.id, { Connect: true, ViewChannel: true });
+      return interaction.reply({ embeds: [baseEmbed().setColor(0x57f287).setDescription(`allowed **${target.displayName}**`)] });
+    }
+    if (sub === 'deny') {
+      if (!isOwner) return interaction.reply({ content: "you don't own this channel", ephemeral: true });
+      const target = interaction.options.getMember('user');
+      if (!target) return interaction.reply({ content: 'provide a user with the user option', ephemeral: true });
+      await vc.permissionOverwrites.edit(target.id, { Connect: false });
+      if (vc.members.has(target.id)) await target.voice.setChannel(null).catch(() => {});
+      return interaction.reply({ embeds: [baseEmbed().setColor(0xed4245).setDescription(`denied **${target.displayName}**`)] });
+    }
+    if (sub === 'rename') {
+      if (!isOwner) return interaction.reply({ content: "you don't own this channel", ephemeral: true });
+      const newName = interaction.options.getString('name');
+      if (!newName) return interaction.reply({ content: 'provide a name with the name option', ephemeral: true });
+      await vc.setName(newName);
+      return interaction.reply({ embeds: [baseEmbed().setColor(0x57f287).setDescription(`renamed to **${newName}**`)] });
+    }
+    if (sub === 'reset') {
+      if (!isOwner) return interaction.reply({ content: "you don't own this channel", ephemeral: true });
+      await vc.setName(`${interaction.member.displayName}'s VC`);
+      await vc.setUserLimit(0);
+      await vc.permissionOverwrites.edit(everyone, { Connect: null, ViewChannel: null });
+      return interaction.reply({ embeds: [baseEmbed().setColor(0x57f287).setDescription('channel reset to defaults')] });
+    }
+    return interaction.reply({ embeds: [buildVmHelpEmbed()] });
+  }
 });
 
 // prefix command handler
@@ -2197,6 +2829,19 @@ client.on('messageCreate', async message => {
         try { await message.delete() } catch {}
         try { await message.channel.send({ content: `${message.author}, invite links aren't allowed here.`, allowedMentions: { users: [message.author.id] } }) } catch {}
         return
+      }
+    }
+  }
+
+  // autoresponder: check message against saved triggers
+  if (message.guild) {
+    const arData = loadAutoresponder();
+    const triggers = arData[message.guild.id] ?? [];
+    if (triggers.length) {
+      const lc = message.content.toLowerCase();
+      const match = triggers.find(r => lc.includes(r.trigger.toLowerCase()));
+      if (match) {
+        try { await message.channel.send(match.response); } catch {}
       }
     }
   }
@@ -2262,20 +2907,45 @@ client.on('messageCreate', async message => {
   // ── Open-to-everyone prefix commands ─────────────────────────────────────────
   if (command === 'roblox') {
     const username = args[0];
-    if (!username) return message.reply('give a roblox username')
+    if (!username) return message.reply('give a roblox username');
     try {
       const userBasic = (await (await fetch('https://users.roblox.com/v1/usernames/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames: [username], excludeBannedUsers: false }) })).json()).data?.[0];
-      if (!userBasic) return message.reply("couldn't find that user")
+      if (!userBasic) return message.reply("couldn't find that user");
       const userId = userBasic.id;
-      const user   = await (await fetch(`https://users.roblox.com/v1/users/${userId}`)).json();
-      const created = new Date(user.created).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-      const avatarUrl = (await (await fetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=420x420&format=Png&isCircular=false`)).json()).data?.[0]?.imageUrl;
+      const [user, avatarRes, friendsRes, pastNamesRes, groupsRes] = await Promise.all([
+        fetch(`https://users.roblox.com/v1/users/${userId}`).then(r => r.json()),
+        fetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=420x420&format=Png&isCircular=false`).then(r => r.json()),
+        fetch(`https://friends.roblox.com/v1/users/${userId}/friends/count`).then(r => r.json()).catch(() => ({ count: 'n/a' })),
+        fetch(`https://users.roblox.com/v1/users/${userId}/username-history?limit=10&sortOrder=Asc`).then(r => r.json()).catch(() => ({ data: [] })),
+        fetch(`https://groups.roblox.com/v1/users/${userId}/groups/roles`).then(r => r.json()).catch(() => ({ data: [] })),
+      ]);
+      const avatarUrl  = avatarRes.data?.[0]?.imageUrl;
       const profileUrl = `https://www.roblox.com/users/${userId}/profile`;
-      return message.reply({ embeds: [baseEmbed().setTitle(`${user.displayName} (@${user.name})`).setURL(profileUrl).setColor(0x1b6fe8)
-        .addFields({ name: 'created', value: created, inline: true }, { name: 'user id', value: `${userId}`, inline: true }).setThumbnail(avatarUrl).setTimestamp()],
-        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('profile').setStyle(ButtonStyle.Link).setURL(profileUrl), new ButtonBuilder().setLabel('games').setStyle(ButtonStyle.Link).setURL(`${profileUrl}#sortName=Games`))]
+      const created    = new Date(user.created).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const friends    = friendsRes.count ?? 'n/a';
+      const pastNames  = (pastNamesRes.data ?? []).map(u => u.name);
+      const groups     = (groupsRes.data ?? []).map(g => g.group.name);
+      const status     = user.description?.trim() || 'None';
+      const embed = baseEmbed()
+        .setTitle(`${user.displayName} (@${user.name})`)
+        .setURL(profileUrl)
+        .setColor(0x1b6fe8)
+        .setDescription(`@${user.name}`)
+        .setThumbnail(avatarUrl)
+        .addFields(
+          { name: 'user id',  value: `${userId}`, inline: true },
+          { name: 'created',  value: created,      inline: true },
+          { name: 'friends',  value: `${friends}`, inline: true },
+          { name: 'about',    value: status,        inline: false },
+        );
+      if (pastNames.length) embed.addFields({ name: `past usernames (${pastNames.length})`, value: pastNames.join(', '), inline: false });
+      if (groups.length)    embed.addFields({ name: `groups (${groups.length})`, value: groups.join(', '), inline: false });
+      embed.setTimestamp();
+      return message.reply({
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('profile').setStyle(ButtonStyle.Link).setURL(profileUrl))]
       });
-    } catch { return message.reply("something went wrong loading their info, try again") }
+    } catch { return message.reply("something went wrong loading their info, try again"); }
   }
 
   if (command === 'gc') {
@@ -2424,13 +3094,14 @@ client.on('messageCreate', async message => {
 
   // ── Whitelist-required prefix commands ───────────────────────────────────────
   if (!loadWhitelist().includes(message.author.id)) {
+    const openPrefixCommands = new Set(['roblox', 'gc', 'help', 'vmhelp', 'about', 'afk', 'snipe', 'convert', 'purge', 'avatar', 'banner', 'serverinfo', 'userinfo', 'invites', 'roleinfo', 'editsnipe', 'reactsnipe', 'cs', 'grouproles']);
     if (command === 'verify' && message.guild) {
       const vwl = loadVerifyWhitelist();
       const guildVwl = vwl[message.guild.id] || { roles: [], users: [] };
       const isVwlAllowed = guildVwl.users.includes(message.author.id) ||
-        message.member.roles.cache.some(r => guildVwl.roles.includes(r.id));
+        message.member?.roles?.cache?.some(r => guildVwl.roles.includes(r.id));
       if (!isVwlAllowed) return;
-    } else {
+    } else if (!openPrefixCommands.has(command)) {
       return;
     }
   }
@@ -3135,12 +3806,12 @@ client.on('messageCreate', async message => {
   if (command === 'wlmanager') {
     const sub = args[0]?.toLowerCase();
     const mgrs = loadWlManagers();
+    if (!isWlManager(message.author.id)) return message.reply({ embeds: [baseEmbed().setColor(0xed4245).setDescription('only whitelist managers can use this')] });
     if (sub === 'list') {
       const all = [...new Set([...mgrs, ...(process.env.WHITELIST_MANAGERS || '').split(',').filter(Boolean)])];
       if (!all.length) return message.reply({ embeds: [baseEmbed().setTitle('whitelist managers').setColor(0x1b6fe8).setDescription('no managers set')] });
       return message.reply({ embeds: [baseEmbed().setTitle('whitelist managers').setColor(0x1b6fe8).setDescription(all.map((id, i) => `${i + 1}. <@${id}> (\`${id}\`)`).join('\n')).setTimestamp()] });
     }
-    if (!isWlManager(message.author.id)) return message.reply({ embeds: [baseEmbed().setColor(0xed4245).setDescription('only whitelist managers can manage wlmanager')] });
     if (sub === 'add') {
       const target = message.mentions.users?.first();
       if (!target) return message.reply('mention a user to add');
@@ -3318,8 +3989,350 @@ client.on('messageCreate', async message => {
     const cfg = loadConfig();
     cfg.stripLogChannelId = ch.id;
     saveConfig(cfg);
-    return message.reply({ embeds: [baseEmbed().setColor(0x57f287).setTitle('Strip Log Channel Set')
-      .addFields({ name: 'channel', value: `${ch}`, inline: true }, { name: 'set by', value: message.author.tag, inline: true }).setTimestamp()] });
+    return message.reply({ embeds: [setupEmbed('Strip Log Channel Set')
+      .addFields({ name: 'channel', value: `${ch}`, inline: true }, { name: 'set by', value: message.author.tag, inline: true })] });
+  }
+
+  // ── warn system ───────────────────────────────────────────────────────────────
+  if (command === 'warn') {
+    if (!message.guild) return;
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
+      return message.reply('you need **Moderate Members** to warn');
+    const target = message.mentions.members.first();
+    if (!target) return message.reply(`usage: \`${prefix}warn @user [reason]\``);
+    const reason = args.slice(1).join(' ') || 'no reason given';
+    const warnsData = loadWarns();
+    if (!warnsData[message.guild.id]) warnsData[message.guild.id] = {};
+    if (!warnsData[message.guild.id][target.id]) warnsData[message.guild.id][target.id] = [];
+    warnsData[message.guild.id][target.id].push({ reason, mod: message.author.tag, ts: Date.now() });
+    saveWarns(warnsData);
+    const count = warnsData[message.guild.id][target.id].length;
+    return message.reply({ embeds: [warnEmbed('Member Warned')
+      .setThumbnail(target.user.displayAvatarURL())
+      .addFields(
+        { name: 'user',           value: `${target.user.tag}`, inline: true },
+        { name: 'warned by',      value: message.author.tag,   inline: true },
+        { name: 'total warnings', value: `${count}`,           inline: true },
+        { name: 'reason',         value: reason }
+      )] });
+  }
+
+  if (command === 'warnings' || command === 'warns') {
+    if (!message.guild) return;
+    const target = message.mentions.users.first();
+    if (!target) return message.reply(`usage: \`${prefix}warnings @user\``);
+    const warnsData = loadWarns();
+    const list = warnsData[message.guild.id]?.[target.id] ?? [];
+    if (!list.length) return message.reply({ embeds: [infoEmbed('No Warnings')
+      .setDescription(`**${target.tag}** has no warnings`)] });
+    const lines = list.map((w, i) =>
+      `**${i + 1}.** ${w.reason} — by **${w.mod}** <t:${Math.floor(w.ts / 1000)}:R>`
+    ).join('\n');
+    return message.reply({ embeds: [warnEmbed(`Warnings — ${target.tag}`)
+      .setThumbnail(target.displayAvatarURL())
+      .setDescription(lines)
+      .addFields({ name: 'total', value: `${list.length}`, inline: true })] });
+  }
+
+  if (command === 'clearwarns') {
+    if (!message.guild) return;
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
+      return message.reply('you need **Moderate Members**');
+    const target = message.mentions.users.first();
+    if (!target) return message.reply(`usage: \`${prefix}clearwarns @user\``);
+    const warnsData = loadWarns();
+    const count = warnsData[message.guild.id]?.[target.id]?.length ?? 0;
+    if (!warnsData[message.guild.id]) warnsData[message.guild.id] = {};
+    warnsData[message.guild.id][target.id] = [];
+    saveWarns(warnsData);
+    return message.reply({ embeds: [successEmbed('Warnings Cleared')
+      .addFields(
+        { name: 'user',    value: target.tag,         inline: true },
+        { name: 'cleared', value: `${count}`,         inline: true },
+        { name: 'by',      value: message.author.tag, inline: true }
+      )] });
+  }
+
+  // ── info commands ─────────────────────────────────────────────────────────────
+  if (command === 'serverinfo' || command === 'si') {
+    if (!message.guild) return;
+    const owner = await message.guild.fetchOwner().catch(() => null);
+    const channels = message.guild.channels.cache;
+    const textCount  = channels.filter(c => c.type === ChannelType.GuildText).size;
+    const voiceCount = channels.filter(c => c.type === ChannelType.GuildVoice).size;
+    const boosts     = message.guild.premiumSubscriptionCount ?? 0;
+    const tier       = message.guild.premiumTier;
+    return message.reply({ embeds: [infoEmbed(message.guild.name)
+      .setThumbnail(message.guild.iconURL({ size: 256 }) ?? LOGO_URL)
+      .addFields(
+        { name: 'owner',   value: owner ? `<@${owner.id}>` : 'unknown',                               inline: true },
+        { name: 'members', value: `${message.guild.memberCount}`,                                      inline: true },
+        { name: 'roles',   value: `${message.guild.roles.cache.size - 1}`,                             inline: true },
+        { name: 'text',    value: `${textCount}`,                                                      inline: true },
+        { name: 'voice',   value: `${voiceCount}`,                                                     inline: true },
+        { name: 'boosts',  value: `${boosts} (tier ${tier})`,                                          inline: true },
+        { name: 'created', value: `<t:${Math.floor(message.guild.createdTimestamp / 1000)}:R>`,        inline: true },
+        { name: 'id',      value: message.guild.id,                                                    inline: true }
+      )
+      .setImage(message.guild.bannerURL({ size: 1024 }) ?? null)] });
+  }
+
+  if (command === 'userinfo' || command === 'ui' || command === 'whois') {
+    if (!message.guild) return;
+    const target = message.mentions.members.first() ?? message.member;
+    const user = target.user;
+    const roles = target.roles.cache.filter(r => r.id !== message.guild.id)
+      .sort((a, b) => b.position - a.position).map(r => `${r}`).slice(0, 10).join(' ');
+    return message.reply({ embeds: [userEmbed(user.tag)
+      .setThumbnail(user.displayAvatarURL({ size: 256 }))
+      .addFields(
+        { name: 'id',       value: user.id,                                              inline: true },
+        { name: 'nickname', value: target.nickname ?? 'none',                            inline: true },
+        { name: 'joined',   value: `<t:${Math.floor(target.joinedTimestamp / 1000)}:R>`, inline: true },
+        { name: 'created',  value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`,  inline: true },
+        { name: 'bot',      value: user.bot ? 'yes' : 'no',                              inline: true },
+        { name: `roles [${target.roles.cache.size - 1}]`, value: roles || 'none' }
+      )] });
+  }
+
+  if (command === 'avatar' || command === 'av') {
+    const target = message.mentions.users.first() ?? message.author;
+    const url = target.displayAvatarURL({ size: 1024 });
+    return message.reply({ embeds: [userEmbed(`${target.tag}'s Avatar`)
+      .setThumbnail(null).setImage(url)
+      .setDescription(`[Open full size](${url})`)] });
+  }
+
+  if (command === 'banner') {
+    const target = await (message.mentions.users.first() ?? message.author).fetch();
+    const url = target.bannerURL({ size: 1024 });
+    if (!url) return message.reply({ embeds: [infoEmbed(`${target.tag} has no banner`)] });
+    return message.reply({ embeds: [userEmbed(`${target.tag}'s Banner`)
+      .setThumbnail(null).setImage(url)
+      .setDescription(`[Open full size](${url})`)] });
+  }
+
+  if (command === 'editsnipe' || command === 'es') {
+    if (!message.guild) return;
+    const data = editSnipeCache.get(message.channel.id);
+    if (!data) return message.reply({ embeds: [infoEmbed('Nothing to Snipe')
+      .setDescription('no recent edits in this channel')] });
+    return message.reply({ embeds: [logEmbed('Edit Sniped')
+      .setThumbnail(data.avatarUrl)
+      .addFields(
+        { name: 'author', value: data.author, inline: true },
+        { name: 'edited', value: `<t:${Math.floor(data.editedAt / 1000)}:R>`, inline: true },
+        { name: 'before', value: data.before?.slice(0, 1024) || '*(empty)*' },
+        { name: 'after',  value: data.after?.slice(0, 1024)  || '*(empty)*' }
+      )] });
+  }
+
+  if (command === 'reactsnipe' || command === 'rs') {
+    if (!message.guild) return;
+    const data = reactSnipeCache.get(message.channel.id);
+    if (!data) return message.reply({ embeds: [infoEmbed('Nothing to Snipe')
+      .setDescription('no recent removed reactions in this channel')] });
+    return message.reply({ embeds: [logEmbed('Reaction Sniped')
+      .setThumbnail(data.avatarUrl)
+      .addFields(
+        { name: 'user',    value: data.author, inline: true },
+        { name: 'emoji',   value: data.emoji,  inline: true },
+        { name: 'removed', value: `<t:${Math.floor(data.removedAt / 1000)}:R>`, inline: true },
+        { name: 'message', value: data.content?.slice(0, 1024) || '*(no content)*' }
+      )] });
+  }
+
+  if (command === 'invites') {
+    if (!message.guild) return;
+    const target = message.mentions.users.first() ?? message.author;
+    try {
+      const invites = await message.guild.invites.fetch();
+      const userInvites = invites.filter(inv => inv.inviter?.id === target.id);
+      const total = userInvites.reduce((sum, inv) => sum + (inv.uses ?? 0), 0);
+      return message.reply({ embeds: [infoEmbed(`Invites — ${target.tag}`)
+        .setThumbnail(target.displayAvatarURL())
+        .addFields(
+          { name: 'total invites', value: `${total}`,          inline: true },
+          { name: 'invite links',  value: `${userInvites.size}`, inline: true }
+        )] });
+    } catch { return message.reply('missing **Manage Guild** permission to fetch invites'); }
+  }
+
+  if (command === 'autoresponder' || command === 'ar') {
+    if (!message.guild) return;
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageGuild))
+      return message.reply('you need **Manage Server**');
+    const sub = args[0]?.toLowerCase();
+    const arData = loadAutoresponder();
+    if (!arData[message.guild.id]) arData[message.guild.id] = [];
+
+    if (sub === 'add') {
+      const rest = args.slice(1).join(' ');
+      const [trigger, ...respParts] = rest.split('|');
+      const response = respParts.join('|').trim();
+      if (!trigger?.trim() || !response)
+        return message.reply(`usage: \`${prefix}ar add trigger | response\``);
+      arData[message.guild.id].push({ trigger: trigger.trim(), response });
+      saveAutoresponder(arData);
+      return message.reply({ embeds: [successEmbed('Autoresponder Added')
+        .addFields({ name: 'trigger', value: `\`${trigger.trim()}\`` }, { name: 'response', value: response })] });
+    }
+
+    if (sub === 'remove') {
+      const trigger = args.slice(1).join(' ');
+      if (!trigger) return message.reply(`usage: \`${prefix}ar remove trigger\``);
+      const before = arData[message.guild.id].length;
+      arData[message.guild.id] = arData[message.guild.id].filter(r => r.trigger.toLowerCase() !== trigger.toLowerCase());
+      if (arData[message.guild.id].length === before) return message.reply(`no autoresponder with that trigger`);
+      saveAutoresponder(arData);
+      return message.reply({ embeds: [successEmbed('Autoresponder Removed')
+        .addFields({ name: 'trigger removed', value: `\`${trigger}\`` })] });
+    }
+
+    if (sub === 'list') {
+      const list = arData[message.guild.id];
+      if (!list?.length) return message.reply({ embeds: [infoEmbed('Autoresponders')
+        .setDescription(`none set — use \`${prefix}ar add trigger | response\``)] });
+      const lines = list.map((r, i) => `**${i + 1}.** \`${r.trigger}\` → ${r.response}`).join('\n');
+      return message.reply({ embeds: [infoEmbed('Autoresponders').setDescription(lines)] });
+    }
+
+    return message.reply(`usage: \`${prefix}ar [add trigger | response / remove trigger / list]\``);
+  }
+
+  // ── .purge ────────────────────────────────────────────────────────────────────
+  if (command === 'purge') {
+    if (!message.guild) return;
+    const amount = parseInt(args[0], 10);
+    if (isNaN(amount) || amount < 1 || amount > 100) return message.reply('give a number between 1 and 100');
+    try {
+      const deleted = await message.channel.bulkDelete(amount, true);
+      const confirm = await message.channel.send({ embeds: [baseEmbed().setColor(0x57f287).setDescription(`deleted **${deleted.size}** messages`)] });
+      setTimeout(() => confirm.delete().catch(() => {}), 4000);
+    } catch (err) { return message.reply(`couldn't purge — ${err.message}`); }
+    return;
+  }
+
+  // ── .delwarn ──────────────────────────────────────────────────────────────────
+  if (command === 'delwarn') {
+    if (!message.guild) return;
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
+      return message.reply('you need **Moderate Members** to delete warnings');
+    const target = message.mentions.users.first();
+    const idx    = parseInt(args[1], 10) - 1;
+    if (!target)      return message.reply(`usage: \`${prefix}delwarn @user <index>\``);
+    if (isNaN(idx))   return message.reply('give the warning number to delete (e.g. `.delwarn @user 2`)');
+    const warnsData = loadWarns();
+    const list = warnsData[message.guild.id]?.[target.id] ?? [];
+    if (!list[idx]) return message.reply(`no warning at index **${idx + 1}**`);
+    const removed = list.splice(idx, 1)[0];
+    saveWarns(warnsData);
+    return message.reply({ embeds: [successEmbed('Warning Removed')
+      .addFields(
+        { name: 'user',       value: `<@${target.id}>`, inline: true },
+        { name: 'removed #',  value: `${idx + 1}`,      inline: true },
+        { name: 'reason was', value: removed.reason }
+      )] });
+  }
+
+  // ── .roleinfo ─────────────────────────────────────────────────────────────────
+  if (command === 'roleinfo') {
+    if (!message.guild) return;
+    const role = message.mentions.roles?.first();
+    if (!role) return message.reply(`usage: \`${prefix}roleinfo @role\``);
+    const members = message.guild.members.cache.filter(m => m.roles.cache.has(role.id)).size;
+    return message.reply({ embeds: [new EmbedBuilder()
+      .setColor(role.color || 0x2B2D31)
+      .setAuthor({ name: BOT_NAME, iconURL: LOGO_URL })
+      .setTitle(role.name)
+      .setTimestamp()
+      .setFooter({ text: BOT_NAME, iconURL: LOGO_URL })
+      .addFields(
+        { name: 'id',          value: role.id,                                              inline: true },
+        { name: 'color',       value: role.hexColor,                                        inline: true },
+        { name: 'members',     value: `${members}`,                                         inline: true },
+        { name: 'mentionable', value: role.mentionable ? 'yes' : 'no',                     inline: true },
+        { name: 'hoisted',     value: role.hoist ? 'yes' : 'no',                           inline: true },
+        { name: 'position',    value: `${role.position}`,                                   inline: true },
+        { name: 'created',     value: `<t:${Math.floor(role.createdTimestamp / 1000)}:R>`, inline: true }
+      )] });
+  }
+
+  // ── .config ───────────────────────────────────────────────────────────────────
+  if (command === 'config') {
+    if (!message.guild) return;
+    const setting = args[0];
+    const value   = args.slice(1).join(' ');
+    if (!setting || !value) return message.reply(`usage: \`${prefix}config <setting> <value>\``);
+    const cfg = loadConfig();
+    if (!cfg.serverConfig) cfg.serverConfig = {};
+    if (!cfg.serverConfig[message.guild.id]) cfg.serverConfig[message.guild.id] = {};
+    cfg.serverConfig[message.guild.id][setting] = value;
+    saveConfig(cfg);
+    return message.reply({ embeds: [baseEmbed().setColor(0x57f287).setTitle('Config Updated')
+      .addFields({ name: setting, value: value, inline: true }).setTimestamp()] });
+  }
+
+  // ── .vanityset ────────────────────────────────────────────────────────────────
+  if (command === 'vanityset') {
+    if (!message.guild) return;
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageGuild))
+      return message.reply('you need **Manage Server** to use this');
+    const action    = args[0]?.toLowerCase();
+    const picRoleId = message.mentions.roles?.first()?.id ?? null;
+    const vData     = loadVanity();
+    if (!vData[message.guild.id]) vData[message.guild.id] = {};
+    const gv = vData[message.guild.id];
+
+    if (action === 'set') {
+      const vanityCode = message.author.username.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32) || 'sins';
+      let vanityResult = null;
+      try { await message.guild.setVanityCode(vanityCode); vanityResult = vanityCode; } catch {}
+      gv.vanityCode = vanityResult;
+      gv.setBy = message.author.id;
+      if (picRoleId) gv.picRoleId = picRoleId;
+      saveVanity(vData);
+      const fields = [{ name: 'set by', value: `<@${message.author.id}>`, inline: true }];
+      if (vanityResult) fields.unshift({ name: 'vanity', value: `discord.gg/${vanityResult}`, inline: true });
+      else fields.unshift({ name: 'vanity', value: 'could not set (server needs vanity URL feature)', inline: true });
+      if (picRoleId) fields.push({ name: 'pic role', value: `<@&${picRoleId}>`, inline: true });
+      return message.reply({ embeds: [vanityEmbed('Vanity Set').addFields(...fields)] });
+    }
+    if (action === 'disable') {
+      delete vData[message.guild.id];
+      saveVanity(vData);
+      return message.reply({ embeds: [errorEmbed('Vanity System Disabled').setDescription('fraud pic perm tracking is now off for this server')] });
+    }
+    if (action === 'status') {
+      return message.reply({ embeds: [vanityEmbed('Vanity Status')
+        .addFields(
+          { name: 'vanity',   value: gv.vanityCode ? `discord.gg/${gv.vanityCode}` : 'not set', inline: true },
+          { name: 'pic role', value: gv.picRoleId ? `<@&${gv.picRoleId}>` : 'not set',         inline: true },
+          { name: 'set by',   value: gv.setBy ? `<@${gv.setBy}>` : 'unknown',                  inline: true }
+        )] });
+    }
+    if (action === 'syncfraud') {
+      const picRId   = gv.picRoleId;
+      const vanityTag = gv.vanityCode ? `/${gv.vanityCode}` : null;
+      if (!picRId)    return message.reply('set a pic role first with `.vanityset set @role`');
+      if (!vanityTag) return message.reply('set a vanity first with `.vanityset set`');
+      const status = await message.reply({ embeds: [baseEmbed().setColor(0x1b6fe8).setDescription('syncing vanity roles...')] });
+      let granted = 0, revoked = 0;
+      for (const [, member] of message.guild.members.cache) {
+        if (member.user.bot) continue;
+        const isRepping = member.presence?.activities?.some(a => a.type === 4 && typeof a.state === 'string' && a.state.includes(vanityTag)) ?? false;
+        const hasRole   = member.roles.cache.has(picRId);
+        if (isRepping && !hasRole)  { try { await member.roles.add(picRId);    granted++; } catch {} }
+        if (!isRepping && hasRole)  { try { await member.roles.remove(picRId); revoked++; } catch {} }
+      }
+      return status.edit({ embeds: [successEmbed('Vanity Sync Complete')
+        .addFields(
+          { name: 'vanity',  value: vanityTag, inline: true },
+          { name: 'granted', value: `${granted}`, inline: true },
+          { name: 'revoked', value: `${revoked}`, inline: true }
+        )] });
+    }
+    return message.reply(`usage: \`${prefix}vanityset <set|disable|status|syncfraud> [@picrole]\``);
   }
 });
 
