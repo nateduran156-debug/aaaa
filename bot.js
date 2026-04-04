@@ -34,14 +34,14 @@ const FRAID_GROUP_LINK = 'https://www.roblox.com/communities/489845165/fraidfg#!
 // ─── Modern "Sins" embed system ───────────────────────────────────────────────
 // Every embed gets: author line (Sins + logo), logo thumbnail top-right,
 // bold title via setTitle, timestamp, and footer — the full discohook look.
-const BOT_NAME = 'Sins'
+const getBotName = () => client.user?.username ?? 'Bot'
 
 function baseEmbed() {
   return new EmbedBuilder()
-    .setAuthor({ name: BOT_NAME, iconURL: LOGO_URL })
+    .setAuthor({ name: getBotName(), iconURL: LOGO_URL })
     .setThumbnail(LOGO_URL)
     .setTimestamp()
-    .setFooter({ text: BOT_NAME, iconURL: LOGO_URL })
+    .setFooter({ text: getBotName(), iconURL: LOGO_URL })
 }
 
 // unified white color palette
@@ -491,10 +491,10 @@ function buildHelpEmbed(page) {
   })
   return new EmbedBuilder()
     .setColor(0xFFFFFF)
-    .setAuthor({ name: `${BOT_NAME} — Help`, iconURL: LOGO_URL })
+    .setAuthor({ name: `${getBotName()} — Help`, iconURL: LOGO_URL })
     .setTitle(section.title)
     .setDescription(lines.join('\n'))
-    .setFooter({ text: `Page ${page + 1} of ${totalPages} • use the buttons to navigate`, iconURL: LOGO_URL })
+    .setFooter({ text: `Page ${page + 1} of ${totalPages}`, iconURL: LOGO_URL })
     .setTimestamp()
 }
 
@@ -515,7 +515,7 @@ function buildGcEmbed(username, groups, avatarUrl, page) {
     .setTitle('Group Check')
     .setThumbnail(avatarUrl ?? LOGO_URL)
     .setDescription(`> Showing groups **${page * GC_PER_PAGE + 1}–${Math.min((page + 1) * GC_PER_PAGE, groups.length)}** of **${groups.length}** total\n\n${groupLines}`)
-    .setFooter({ text: `Sins • Page ${page + 1} of ${totalPages}`, iconURL: LOGO_URL })
+    .setFooter({ text: `${getBotName()} • Page ${page + 1} of ${totalPages}`, iconURL: LOGO_URL })
     .setTimestamp();
   if (avatarUrl) embed.setAuthor({ name: username, iconURL: avatarUrl });
   return embed;
@@ -526,7 +526,7 @@ function buildGcNotInGroupEmbed(displayName) {
     .setColor(0xFFFFFF)
     .setTitle('⛔  Not In Group')
     .setDescription(`**${displayName}** hasn't joined the group yet.\nAsk them to join before verifying.\n\n> **Group ID:** \`${FRAID_GROUP_ID}\`\n> **Link:** [Click to Join](${FRAID_GROUP_LINK})`)
-    .setFooter({ text: 'Sins • fraidfg', iconURL: LOGO_URL })
+    .setFooter({ text: `${getBotName()} • fraidfg`, iconURL: LOGO_URL })
     .setTimestamp()
 }
 
@@ -535,7 +535,7 @@ function buildGcInGroupEmbed(displayName) {
     .setColor(0xFFFFFF)
     .setTitle('✅  In Group')
     .setDescription(`**${displayName}** is in the group and ready to be verified.\n\n> **Group ID:** \`${FRAID_GROUP_ID}\`\n> **Link:** [View Group](${FRAID_GROUP_LINK})`)
-    .setFooter({ text: 'Sins • fraidfg', iconURL: LOGO_URL })
+    .setFooter({ text: `${getBotName()} • fraidfg`, iconURL: LOGO_URL })
     .setTimestamp()
 }
 
@@ -2383,10 +2383,10 @@ client.on('interactionCreate', async interaction => {
     const members = guild.members.cache.filter(m => m.roles.cache.has(role.id)).size;
     return interaction.reply({ embeds: [new EmbedBuilder()
       .setColor(role.color || 0x2B2D31)
-      .setAuthor({ name: BOT_NAME, iconURL: LOGO_URL })
+      .setAuthor({ name: getBotName(), iconURL: LOGO_URL })
       .setTitle(role.name)
       .setTimestamp()
-      .setFooter({ text: BOT_NAME, iconURL: LOGO_URL })
+      .setFooter({ text: getBotName(), iconURL: LOGO_URL })
       .addFields(
         { name: 'id',        value: role.id,                                          inline: true },
         { name: 'color',     value: role.hexColor,                                    inline: true },
@@ -4255,10 +4255,10 @@ client.on('messageCreate', async message => {
     const members = message.guild.members.cache.filter(m => m.roles.cache.has(role.id)).size;
     return message.reply({ embeds: [new EmbedBuilder()
       .setColor(role.color || 0x2B2D31)
-      .setAuthor({ name: BOT_NAME, iconURL: LOGO_URL })
+      .setAuthor({ name: getBotName(), iconURL: LOGO_URL })
       .setTitle(role.name)
       .setTimestamp()
-      .setFooter({ text: BOT_NAME, iconURL: LOGO_URL })
+      .setFooter({ text: getBotName(), iconURL: LOGO_URL })
       .addFields(
         { name: 'id',          value: role.id,                                              inline: true },
         { name: 'color',       value: role.hexColor,                                        inline: true },
