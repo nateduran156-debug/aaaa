@@ -1,0 +1,14 @@
+{
+  "name": "fraid-bot",
+  "version": "1.0.0",
+  "description": "discord bot",
+  "main": "bot.js",
+  "type": "module",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node --watch bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  }
+}
