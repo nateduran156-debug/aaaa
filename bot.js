@@ -356,6 +356,7 @@ async function unjailMember(guild, member, modTag) {
 const HELP_SECTIONS = [
   {
     title: 'Moderation',
+
     commands: [
       '{p}hb @user [reason]',
       '{p}unhb [userId]',
@@ -369,6 +370,7 @@ const HELP_SECTIONS = [
   },
   {
     title: 'Moderation 2',
+
     commands: [
       '{p}unmute @user',
       '{p}hush @user',
@@ -382,6 +384,7 @@ const HELP_SECTIONS = [
   },
   {
     title: 'Verify System',
+
     commands: [
       '{p}verify @user',
       '{p}vstatus',
@@ -393,6 +396,7 @@ const HELP_SECTIONS = [
   },
   {
     title: 'Special Actions',
+
     commands: [
       '{p}annoy @user',
       '{p}unannoy @user',
@@ -402,6 +406,7 @@ const HELP_SECTIONS = [
   },
   {
     title: 'Info & Utility',
+
     commands: [
       '{p}about',
       '{p}activitycheck start [message]',
@@ -415,6 +420,7 @@ const HELP_SECTIONS = [
   },
   {
     title: 'Roblox',
+
     commands: [
       '{p}roblox [username]',
       '{p}gc [username]',
@@ -428,6 +434,7 @@ const HELP_SECTIONS = [
   },
   {
     title: 'Admin',
+
     commands: [
       '{p}prefix [new prefix]',
       '{p}status [type] [text]',
@@ -442,6 +449,7 @@ const HELP_SECTIONS = [
   },
   {
     title: 'Server Setup',
+
     commands: [
       '{p}autorole set @role',
       '{p}autorole disable',
@@ -455,6 +463,7 @@ const HELP_SECTIONS = [
   },
   {
     title: 'Server Setup 2',
+
     commands: [
       '{p}altdentifier enable',
       '{p}altdentifier disable',
@@ -472,12 +481,20 @@ function buildHelpEmbed(page) {
   const p = getPrefix()
   const section = HELP_SECTIONS[page]
   const totalPages = HELP_SECTIONS.length
+  const lines = section.commands.map(c => {
+    const full = c.replace(/\{p\}/g, p)
+    const spaceIdx = full.indexOf(' ')
+    if (spaceIdx === -1) return `**\`${full}\`**`
+    const cmd  = full.slice(0, spaceIdx)
+    const args = full.slice(spaceIdx + 1)
+    return `**\`${cmd}\`** ${args}`
+  })
   return new EmbedBuilder()
     .setColor(0xFFFFFF)
     .setAuthor({ name: `${BOT_NAME} — Help`, iconURL: LOGO_URL })
-    .setTitle(`📋  ${section.title}`)
-    .setDescription(section.commands.map(c => `\`${c.replace(/\{p\}/g, p)}\``).join('\n'))
-    .setFooter({ text: `Page ${page + 1} of ${totalPages} • Sins`, iconURL: LOGO_URL })
+    .setTitle(section.title)
+    .setDescription(lines.join('\n'))
+    .setFooter({ text: `Page ${page + 1} of ${totalPages} • use the buttons to navigate`, iconURL: LOGO_URL })
     .setTimestamp()
 }
 
