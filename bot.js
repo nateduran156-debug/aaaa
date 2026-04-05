@@ -1426,20 +1426,27 @@ client.on('interactionCreate', async interaction => {
 
     const [platform, type] = option.split('-')
     const count = 8
-    const maxAttempts = 60
+    const maxAttempts = 80
     const usernames = []
+    const seen = new Set()
     let attempts = 0
 
     if (platform === 'roblox') {
       while (usernames.length < count && attempts < maxAttempts) {
         attempts++
         const candidate = type === 'words' ? genWords(platform) : genBarcode()
+        if (seen.has(candidate)) continue
+        seen.add(candidate)
         const available = await isRobloxAvailable(candidate)
         if (available) usernames.push(candidate)
       }
     } else {
-      for (let i = 0; i < count; i++) {
-        usernames.push(genWords(platform))
+      while (usernames.length < count && attempts < maxAttempts) {
+        attempts++
+        const candidate = genWords(platform)
+        if (seen.has(candidate)) continue
+        seen.add(candidate)
+        usernames.push(candidate)
       }
     }
 
