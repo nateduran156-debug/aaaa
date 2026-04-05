@@ -1384,9 +1384,15 @@ client.on('interactionCreate', async interaction => {
     await interaction.deferReply({ ephemeral: !showPublic })
 
     // first half of the mashup username
-    const partsA = ['larp','grief','lung','ion','your','flex','cut','ghost','void','blur','drain','snap','melt','fade','numb','null','bleed','vibe','haze','glitch','flop','cope','soak','crave','drift','grind','lurk','burn','skim','zap','deflex','social','color','archive','scatter','hollow','shatter','fracture','spiral','unravel','detach','absorb','suppress','linger','exhaust','dissolve','consume','distort','collapse','isolate']
+    const partsA = [
+      'larp','grief','lung','ion','your','flex','cut','ghost','void','blur','drain','snap','melt','fade','numb','null','bleed','vibe','haze','glitch','flop','cope','soak','crave','drift','grind','lurk','burn','skim','zap','deflex','social','color','archive','scatter','hollow','shatter','fracture','spiral','unravel','detach','absorb','suppress','linger','exhaust','dissolve','consume','distort','collapse','isolate',
+      'lean','chug','chugging','blunt','smoke','cosplay','cosplaying','burnt','plug','rack','trap','phase','trace','swipe','scroll','sip','catch','chase','freeze','switch','pivot','loop','spin','twist','crack','pop','slide','coast','rush','peak','dip','fold','press','drag','grip','tap','slam','crash','smash','rip','slice','trim','clip','snip','roll','drop','flip','lurking','fading','bleeding','drifting','burning','grinding','coping','craving','soaking','melting','snapping','draining','blurring','zapping','vibing','hazing','glitching','flopping','snatching','trapping','chasing','catching','smoking','rolling','plugging'
+    ]
     // second half of the mashup username
-    const partsB = ['this','that','funds','off','lame','hurt','romance','ized','izing','wave','core','less','shift','drop','lock','mode','cast','link','fix','run','hit','zone','edge','cap','slip','miss','type','mark','form','load','flow','path','line','log','port','ed','ing','ness','ward','scape','fall','cycle','loop','gate','run','sink','crush','void','storm','drift']
+    const partsB = [
+      'this','that','funds','off','lame','hurt','romance','ized','izing','wave','core','less','shift','drop','lock','mode','cast','link','fix','run','hit','zone','edge','cap','slip','miss','type','mark','form','load','flow','path','line','log','port','ed','ing','ness','ward','scape','fall','cycle','loop','gate','sink','crush','void','storm','drift',
+      'lean','sipper','blunt','catcher','playing','chugging','smoking','rolling','trapping','zoning','sliding','coasting','rushing','peaking','dipping','folding','pressing','dragging','gripping','tapping','slamming','crashing','smashing','grinding','lurking','fading','bleeding','drifting','burning','coping','craving','soaking','melting','snapping','draining','blurring','zapping','vibing','hazing','glitching','flopping','snatching','chasing','catching','plugging','flipping','racking','switching','pivoting','spinning','twisting','cracking','popping','griefs','blunts','smokes','rolls','flips','racks','traps','phases','traces','swipes','scrolls','sips'
+    ]
 
     function pick(arr) { return arr[Math.floor(Math.random() * arr.length)] }
     function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1) }
