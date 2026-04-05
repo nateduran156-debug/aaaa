@@ -915,6 +915,17 @@ const slashCommands = [
     .addUserOption(o => o.setName('user').setDescription('user to allow/deny').setRequired(false))
     .addIntegerOption(o => o.setName('limit').setDescription('user limit (0 = no limit) for limit action').setRequired(false).setMinValue(0).setMaxValue(99))
     .addStringOption(o => o.setName('name').setDescription('new channel name for rename action').setRequired(false)),
+
+  new SlashCommandBuilder().setName('generate').setDescription('generate usernames')
+    .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
+    .setContexts(ALL_CONTEXTS)
+    .addStringOption(o => o.setName('option').setDescription('type of username to generate').setRequired(true)
+      .addChoices(
+        { name: 'discord - words',  value: 'discord-words'  },
+        { name: 'roblox - words',   value: 'roblox-words'   },
+        { name: 'roblox - barcode', value: 'roblox-barcode' }
+      ))
+    .addBooleanOption(o => o.setName('show').setDescription('show the result publicly (default: only you see it)').setRequired(false)),
 ].map(c => c.toJSON());
 
 // ─── Status helper ────────────────────────────────────────────────────────────
@@ -1367,6 +1378,80 @@ client.on('interactionCreate', async interaction => {
   const channel = interaction.channel;
 
   // ── Open-to-everyone commands ────────────────────────────────────────────────
+  if (commandName === 'generate') {
+    const option  = interaction.options.getString('option')
+    const showPublic = interaction.options.getBoolean('show') ?? false
+    await interaction.deferReply({ ephemeral: !showPublic })
+
+    // first half of the mashup username
+    const partsA = ['larp','grief','lung','ion','your','flex','cut','ghost','void','blur','drain','snap','melt','fade','numb','null','bleed','vibe','haze','glitch','flop','cope','soak','crave','drift','grind','lurk','burn','skim','zap','deflex','social','color','archive','scatter','hollow','shatter','fracture','spiral','unravel','detach','absorb','suppress','linger','exhaust','dissolve','consume','distort','collapse','isolate']
+    // second half of the mashup username
+    const partsB = ['this','that','funds','off','lame','hurt','romance','ized','izing','wave','core','less','shift','drop','lock','mode','cast','link','fix','run','hit','zone','edge','cap','slip','miss','type','mark','form','load','flow','path','line','log','port','ed','ing','ness','ward','scape','fall','cycle','loop','gate','run','sink','crush','void','storm','drift']
+
+    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)] }
+    function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1) }
+    function randNum(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min }
+
+    function genWords(platform) {
+      const a = pick(partsA)
+      const b = pick(partsB)
+      if (platform === 'discord') {
+        return `${a}${b}`.slice(0, 32)
+      } else {
+        return `${cap(a)}${cap(b)}`.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20)
+      }
+    }
+
+    function genBarcode() {
+      const chars = ['l', 'I']
+      const len   = randNum(10, 16)
+      let result  = ''
+      while (result.length < len) result += pick(chars)
+      return result
+    }
+
+    async function isRobloxAvailable(username) {
+      try {
+        const res = await fetch(`https://auth.roblox.com/v1/usernames/validate?request.username=${encodeURIComponent(username)}&request.birthday=2000-01-01&request.context=Username`)
+        const data = await res.json()
+        return data.code === 0
+      } catch { return false }
+    }
+
+    const [platform, type] = option.split('-')
+    const count = 8
+    const maxAttempts = 60
+    const usernames = []
+    let attempts = 0
+
+    if (platform === 'roblox') {
+      while (usernames.length < count && attempts < maxAttempts) {
+        attempts++
+        const candidate = type === 'words' ? genWords(platform) : genBarcode()
+        const available = await isRobloxAvailable(candidate)
+        if (available) usernames.push(candidate)
+      }
+    } else {
+      for (let i = 0; i < count; i++) {
+        usernames.push(genWords(platform))
+      }
+    }
+
+    const platformLabel = platform === 'discord' ? 'Discord' : 'Roblox'
+    const typeLabel     = type === 'words' ? 'Words' : 'Barcode'
+    const footerText    = platform === 'roblox'
+      ? `${usernames.length} available usernames found (checked ${attempts} candidates)`
+      : `${count} usernames generated`
+
+    const e = baseEmbed()
+      .setColor(0xFFFFFF)
+      .setTitle(`${platformLabel} Usernames — ${typeLabel}`)
+      .setDescription(usernames.length > 0 ? usernames.map(u => `\`${u}\``).join('\n') : 'No available usernames found after checking — try again.')
+      .setFooter({ text: footerText, iconURL: LOGO_URL })
+
+    return interaction.editReply({ embeds: [e] })
+  }
+
   if (commandName === 'roblox') {
     await interaction.deferReply();
     const username = interaction.options.getString('username');
